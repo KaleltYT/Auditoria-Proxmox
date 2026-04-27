@@ -4,7 +4,10 @@
 # Genera un informe Markdown listo para descargar y analizar en local.
 #
 # Uso rápido (en la shell del nodo Proxmox, como root):
+#   # con curl (preinstalado en PVE oficial):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh)
+#   # alternativa con wget (también suele estar en PVE):
+#   bash <(wget -qO- https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh)
 #
 # Opciones:
 #   -o, --output FILE     Ruta del informe (por defecto /root/proxmox-audit-<host>-<fecha>.md)
@@ -49,7 +52,7 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 fi
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -829,6 +832,8 @@ log "      scp root@<IP_NODO>:${OUTPUT} ./"
 log ""
 log " B) Desde la web shell de Proxmox (sin SSH) — un solo uso:"
 log "      bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --serve 8765"
+log "      # o con wget si no hay curl:"
+log "      bash <(wget -qO- https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --serve 8765"
 log "    Abre la URL que imprime en tu navegador y descarga el .md."
 log ""
 log " C) Copy/paste por la consola web (informes pequeños):"
@@ -838,6 +843,8 @@ log ""
 log "============================================================"
 log " LIMPIEZA POST-AUDITORÍA (informe + script + history):"
 log "      bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --cleanup '${OUTPUT}'"
+log "    (con wget):"
+log "      bash <(wget -qO- https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --cleanup '${OUTPUT}'"
 log "============================================================"
 
 if [[ $SERVE -eq 1 ]]; then

@@ -44,10 +44,20 @@ Genera un informe **Markdown** listo para descargar y analizar en local con un e
 Desde la shell del nodo Proxmox (o desde la web shell `https://NODO:8006` → Datacenter → Nodo → `_Shell`):
 
 ```bash
+# con curl (preinstalado en Proxmox VE 7/8 instalado desde el ISO oficial):
 bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh)
+
+# alternativa con wget (también suele estar en PVE):
+bash <(wget -qO- https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh)
 ```
 
 Por defecto el informe se guarda en `/root/proxmox-audit-<host>-<fecha>.md`.
+
+#### ¿Está `curl` instalado por defecto en Proxmox?
+
+- **Proxmox VE 7/8 instalado desde el ISO oficial**: sí, `curl` y `wget` vienen preinstalados.
+- **Proxmox sobre Debian minimal** (`apt install proxmox-ve` encima de un Debian netinst pelado): `wget` casi siempre está; `curl` puede faltar. Si falla, instálalo con `apt update && apt install -y curl`, o usa la alternativa con `wget` de arriba.
+- Comprobarlo a mano: `command -v curl wget`.
 
 ### Opciones
 
