@@ -57,6 +57,14 @@ Por defecto el informe se guarda en `/root/proxmox-audit-<host>-<fecha>.md`.
 - **Proxmox sobre Debian minimal** (`apt install proxmox-ve` encima de un Debian netinst pelado): `wget` casi siempre está; `curl` puede faltar. Si falla, instálalo con `apt update && apt install -y curl`, o usa la alternativa con `wget` de arriba.
 - Comprobarlo a mano: `command -v curl wget`.
 
+#### ¿Y si el nodo no tiene acceso a Internet?
+
+Pasa más a menudo de lo que parece (firewall del cliente, sin gateway, sin DNS, proxy obligatorio, red air-gapped). Tienes una guía dedicada con **diagnóstico copy-paste** y cinco formas de meter los scripts en el nodo sin red:
+
+→ **[OFFLINE.md](./OFFLINE.md)**
+
+Resumen de las opciones de transferencia: copy-paste por la web shell con heredoc, base64 si el copy-paste corrompe caracteres, `scp` desde tu portátil, servir los `.sh` por HTTP desde tu portátil, o subirlos como *snippet* en el storage de PVE y copiarlos desde la shell.
+
 ### Opciones
 
 ```
