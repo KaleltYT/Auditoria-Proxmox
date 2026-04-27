@@ -1,13 +1,11 @@
 # Auditoría Proxmox VE
 
-Script de auditoría exhaustiva para nodos **Proxmox VE** (standalone o en clúster).
-Genera un informe **Markdown** listo para descargar y analizar en local con un editor o un LLM.
+Dos herramientas para nodos **Proxmox VE** (standalone o en clúster):
 
-> Pensado para consultoría: lo lanzas en la shell del nodo, te llevas el `.md` a tu
-> equipo y revisas configuración, VMs, red, almacenamiento, BIOS y rendimiento sin
-> tener que volver a entrar al servidor. Incluye modo **`--serve`** para descargar
-> por navegador desde la propia web shell de Proxmox y modo **`--cleanup`** para
-> borrar después todo rastro.
+- **`auditoria-proxmox.sh`** — auditoría exhaustiva **solo lectura** (configuración, VMs, red, almacenamiento, BIOS, exposición pública…).
+- **`bench-proxmox.sh`** — banco de pruebas de **rendimiento** (CPU, memoria, disco, red entre nodos y entre VMs). Hace I/O real, así que es opt-in.
+
+Ambas generan un único **Markdown** descargable y comparten los mismos modos `--serve` (descarga por navegador desde la web shell) y `--cleanup` (borrado de rastros).
 
 ## Qué incluye el informe
 
@@ -182,6 +180,108 @@ Para minimizar rastros desde el principio, el script ya:
 - En clúster, audita el **nodo donde se ejecuta**. Repítelo en cada nodo.
 - Los `paste_file` truncan ficheros a 2000 líneas.
 - `--cleanup` no es anti-forense profesional: borra lo evidente, no es resistente a un análisis forense del disco.
+
+---
+
+# `bench-proxmox.sh` — banco de pruebas de rendimiento
+
+Script complementario que **mide** rendimiento (a diferencia del de auditoría, que solo lee). Genera carga real:
+
+- **CPU**: `sysbench cpu` (single y multi-thread), `openssl speed` (AES-GCM, SHA-256), compresión `gzip`/`xz`/`7z`.
+- **Memoria**: `sysbench memory` (lectura/escritura, 1M y 4K), fallback a `dd`.
+- **Disco**: `fio` con 5 cargas (4K random read/write, 1M sequential read/write, mixto 70/30), todas con `O_DIRECT` para evitar el cache de página. Fallback a `dd` si `fio` no está.
+- **pveperf**: prueba nativa de Proxmox (CPU bogomips, regex/s, HD seek, fsyncs/s, DNS) sobre `/`, `/var/lib/vz` y storages tipo dir/zfs.
+- **Red entre nodos**: `iperf3` cliente/servidor, TCP, TCP reverso (-R), TCP paralelo, UDP 1 Gbit.
+- **Red entre VMs**: `iperf3` lanzado dentro de las VMs vía `qm guest exec` (requiere `qemu-guest-agent` activo e `iperf3` instalado en cada VM).
+
+## Aviso
+
+Estos tests **afectan al rendimiento del nodo durante la ejecución**: I/O real sobre el storage, CPU al 100%, tráfico de red. No los lances en producción crítica sin avisar al cliente.
+
+## Uso
+
+```bash
+# Bench completo (CPU + memoria + pveperf + disco; NO toca la red):
+bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) all
+
+# o con wget:
+bash <(wget -qO- https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) all
+
+# Tests sueltos:
+bash <(curl -fsSL .../bench-proxmox.sh) cpu mem
+bash <(curl -fsSL .../bench-proxmox.sh) disk --bench-dir /var/lib/vz --disk-size 4G --duration 30
+bash <(curl -fsSL .../bench-proxmox.sh) pveperf
+
+# Si faltan paquetes, deja que el script los instale:
+bash <(curl -fsSL .../bench-proxmox.sh) all --install
+```
+
+### Disco — pruebas sobre un storage concreto
+
+`fio` usa el directorio que le digas con `--bench-dir`. Pásale la ruta del storage cuyo rendimiento quieres medir:
+
+```bash
+# storage local-lvm montado típicamente en /var/lib/vz
+bash <(curl ...) disk --bench-dir /var/lib/vz
+
+# pool ZFS rpool/data (asumiendo que está expuesto como dir o zfspool)
+bash <(curl ...) disk --bench-dir /rpool/data
+
+# NFS montado
+bash <(curl ...) disk --bench-dir /mnt/pve/MIBOX
+```
+
+### Red entre dos nodos del clúster
+
+En el **nodo B** (servidor), arranca el servidor:
+
+```bash
+bash <(curl ...) net-server --port 5201
+```
+
+En el **nodo A** (cliente):
+
+```bash
+bash <(curl ...) net-client --target 10.0.0.20 --port 5201
+```
+
+### Red entre dos VMs del mismo nodo (o entre nodos)
+
+Requisitos en cada VM: `qemu-guest-agent` activo (PVE: `agent: 1`) y `iperf3` instalado dentro del invitado.
+
+```bash
+bash <(curl ...) vm-net --vm-a 101 --vm-b 102
+```
+
+El script:
+1. Pregunta al guest agent de la VM B su IP.
+2. Lanza `iperf3 -s -D` dentro de B.
+3. Ejecuta `iperf3 -c <IP_B>` desde A (TCP, TCP -R).
+4. Mata el iperf3 en B al terminar.
+
+### Opciones útiles
+
+```
+--threads N      Hilos para sysbench/fio (def. nproc).
+--duration S     Duración por prueba (def. 20s).
+--disk-size SZ   Tamaño del archivo fio (def. 1G; sube a 4G/8G en SSDs grandes).
+--bench-dir DIR  Directorio donde escribir el tempfile (def. /var/tmp).
+--install        Acepta apt install de los paquetes que falten.
+--serve [PORT]   Tras los tests, sirve el .md por HTTP para descargarlo.
+--cleanup [PATH] No mide: borra informes, history, tempfiles y copias del script.
+```
+
+### Descarga del informe
+
+Idéntico al script de auditoría: `scp`, `--serve` (HTTP por puerto aleatorio) o `gzip+base64` por la consola web. La sección final del propio informe imprime los tres comandos listos para copiar.
+
+### Limpieza
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --cleanup /root/proxmox-bench-<host>-<fecha>.md
+```
+
+Borra: el `.md`, copias del script en `/root` y `/tmp`, **tempfiles** que `fio`/`dd` hubieran dejado en `/var/tmp` o `/tmp`, entradas relevantes del `~/.bash_history` y artefactos del shell.
 
 ## Licencia
 
