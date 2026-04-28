@@ -132,7 +132,7 @@ run_capture() {
     w "**${desc}**"
     w ''
     w '```'
-    "$@" 2>&1 || w "(comando devolvió código $?)"
+    "$@" >> "$OUTPUT" 2>&1 || w "(comando devolvió código $?)"
     w '```'
     blank
 }
@@ -142,7 +142,7 @@ run_sh_capture() {
     w "**${desc}**"
     w ''
     w '```'
-    bash -c "$*" 2>&1 || w "(comando devolvió código $?)"
+    bash -c "$*" >> "$OUTPUT" 2>&1 || w "(comando devolvió código $?)"
     w '```'
     blank
 }

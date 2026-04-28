@@ -257,14 +257,14 @@ section()    { blank; w "## $*"; blank; }
 subsection() { blank; w "### $*"; blank; }
 
 # run "Descripción" cmd args...
-# Captura stdout+stderr en un bloque de código markdown.
+# Captura stdout+stderr en un bloque de código markdown del informe.
 run() {
     local desc="$1"; shift
     w "**${desc}**"
     w ''
     w '```'
     if have "$1"; then
-        "$@" 2>&1 || w "(comando devolvió código $?)"
+        "$@" >> "$OUTPUT" 2>&1 || w "(comando devolvió código $?)"
     else
         w "(comando no disponible: $1)"
     fi
@@ -278,7 +278,7 @@ run_sh() {
     w "**${desc}**"
     w ''
     w '```'
-    bash -c "$*" 2>&1 || w "(comando devolvió código $?)"
+    bash -c "$*" >> "$OUTPUT" 2>&1 || w "(comando devolvió código $?)"
     w '```'
     blank
 }
@@ -291,12 +291,12 @@ paste_file() {
     if [[ -e "$path" ]]; then
         if [[ -d "$path" ]]; then
             w '```'
-            ls -la --time-style=long-iso -- "$path" 2>&1
+            ls -la --time-style=long-iso -- "$path" >> "$OUTPUT" 2>&1
             w '```'
         else
             w "\`\`\`${lang}"
             # Limita a 2000 líneas para evitar informes gigantes.
-            sed -n '1,2000p' -- "$path" 2>&1
+            sed -n '1,2000p' -- "$path" >> "$OUTPUT" 2>&1
             w '```'
         fi
     else
