@@ -611,7 +611,7 @@ log "  - SCP:    scp root@<NODO>:${OUTPUT} ./"
 log "  - HTTP:   bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --serve 8765"
 log ""
 log "LIMPIEZA cuando termines:"
-log "  bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --cleanup '${OUTPUT}'"
+log "  bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --cleanup '${OUTPUT}' && history -c && : > ~/.bash_history"
 
 if [[ $SERVE -eq 1 ]]; then
     serve_report "$OUTPUT" "$SERVE_PORT"

@@ -935,7 +935,7 @@ log "  - Re-emitir base64 más tarde:"
 log "               bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --print-base64"
 log ""
 log " LIMPIEZA cuando termines de descargar:"
-log "      bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --cleanup '${OUTPUT}'"
+log "      bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --cleanup '${OUTPUT}' && history -c && : > ~/.bash_history"
 log "============================================================"
 
 if [[ $SERVE -eq 1 ]]; then
