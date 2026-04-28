@@ -308,13 +308,18 @@ Abre **PowerShell** (no `cmd.exe`). En Windows 10/11 es nativo: `Win + R` → `p
 $b64 = 'PEGA_AQUI_LA_LINEA_BASE64'
 
 # 2) Decodifica + descomprime + guarda:
-$ms  = [IO.MemoryStream]::new([Convert]::FromBase64String($b64))
-$gz  = [IO.Compression.GzipStream]::new($ms, 'Decompress')
-$out = [IO.MemoryStream]::new()
+$bytes = [Convert]::FromBase64String($b64)
+$ms  = [System.IO.MemoryStream]::new($bytes)
+$gz  = [System.IO.Compression.GzipStream]::new($ms, [System.IO.Compression.CompressionMode]::Decompress)
+$out = [System.IO.MemoryStream]::new()
 $gz.CopyTo($out)
-[IO.File]::WriteAllBytes("$PWD\audit.md", $out.ToArray())
-Write-Host "Guardado en $PWD\audit.md"
+$gz.Dispose(); $ms.Dispose()
+[System.IO.File]::WriteAllBytes("$PWD\audit.md", $out.ToArray())
+Write-Host "Guardado: $PWD\audit.md ($($out.Length) bytes)"
+$out.Dispose()
 ```
+
+> **Importante**: usa el cast explícito `[System.IO.Compression.CompressionMode]::Decompress`. Pasar `'Decompress'` como string falla en PowerShell 5.1 con `Se encontraron varias sobrecargas ambiguas` porque `GzipStream` tiene constructores que también aceptan `CompressionLevel`.
 
 **Versión sin gzip** (lánzalo con `--print-base64 --plain`):
 
