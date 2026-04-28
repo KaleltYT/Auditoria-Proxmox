@@ -245,9 +245,45 @@ Para habilitar el contenido `snippets` en el storage `local`:
 
 Si tampoco puedes subir el `.md` resultante a tu equipo (porque no hay `scp` desde fuera ni red), tienes los mismos caminos a la inversa:
 
-- **`--serve 8765`** del propio script: levanta un HTTP en el nodo y lo descargas con el navegador desde el equipo desde el que conectas (siempre que ese equipo alcance al nodo, cosa que sí ocurre porque ya alcanzas el `:8006`).
-- **base64 inverso**: en el nodo `gzip -c informe.md | base64 -w0 ; echo`, copia, en tu equipo `base64 -d archivo.b64 | gunzip > informe.md`.
-- Subir el `.md` al *snippets* de PVE → bajar desde el GUI.
+- **`--serve 8765`** del propio script: levanta un HTTP en el nodo y lo descargas con el navegador desde el equipo desde el que conectas. **Funciona sólo si tu equipo alcanza al nodo en ese puerto**. El que llegues al `:8006` no garantiza que llegues al `:8765`: muchos firewalls de cliente / VPN sólo abren el puerto del GUI. Si el navegador te dice *"no se puede conectar"* o *"error al cargar"*, ese es el caso.
+- **`--print-base64`** del propio script: imprime el informe en una sola línea base64 a stdout. **Sólo necesita la web shell**, no abre puertos. Es la opción a prueba de balas:
+
+  ```bash
+  bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --print-base64
+  # (sin argumento usa el último .md de /root; o pasa la ruta exacta)
+  ```
+
+  En tu equipo local:
+
+  ```bash
+  echo 'PEGA_AQUI_LA_LINEA' | base64 -d | gunzip > audit.md
+  ```
+
+- **Manual sin script**: `gzip -c informe.md | base64 -w0 ; echo` y copy/paste igual que arriba.
+- **Subir el `.md` al *snippets* de PVE** → bajar desde el GUI.
+
+### Si `--serve` está bloqueado por firewall
+
+Es lo más habitual cuando conectas vía VPN o jump-host: tu cliente alcanza el GUI (`:8006`) pero no el puerto que abre `--serve`. Tres reacciones:
+
+1. **Usa `--print-base64`** (recomendado, no requiere abrir nada).
+2. **Comprueba si el bloqueo es local al nodo** (a veces `pve-firewall` o `iptables` del propio host):
+
+   ```bash
+   curl -sI http://127.0.0.1:8765/   # ¿responde el python local?
+   pve-firewall status               # ¿está activo?
+   iptables -L INPUT -n | grep 8765  # ¿hay regla específica?
+   ```
+
+   Si responde local pero no remoto, el firewall **del nodo** está cortando. Abrir sólo a tu IP cliente:
+
+   ```bash
+   iptables -I INPUT -p tcp --dport 8765 -s <TU_IP_CLIENTE> -j ACCEPT
+   # tras descargar:
+   iptables -D INPUT -p tcp --dport 8765 -s <TU_IP_CLIENTE> -j ACCEPT
+   ```
+
+3. **Si es un firewall de red intermedio**, no hay arreglo desde el nodo — usa `--print-base64`.
 
 Y al terminar, recuerda:
 

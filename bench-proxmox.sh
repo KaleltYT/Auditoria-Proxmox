@@ -31,6 +31,8 @@
 #       --install         Ofrece apt install para los paquetes que falten
 #       --serve [PORT]    Tras los tests, sirve el informe por HTTP (def. 8765)
 #       --cleanup [PATH]  No mide: borra rastros (informe, history, tempfiles)
+#       --print-base64 [PATH]  No mide: imprime el informe en gzip+base64 a stdout
+#                         para copy/paste cuando --serve está bloqueado por firewall
 #   -h, --help            Ayuda
 
 set -u
@@ -60,6 +62,8 @@ SERVE=0
 SERVE_PORT=8765
 CLEANUP=0
 CLEANUP_PATH=""
+PRINT_B64=0
+PRINT_B64_PATH=""
 
 TESTS=()
 
@@ -69,7 +73,7 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 fi
 
 usage() {
-    sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -92,6 +96,10 @@ while [[ $# -gt 0 ]]; do
         --cleanup)
             CLEANUP=1
             if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CLEANUP_PATH="$2"; shift 2; else shift; fi
+            ;;
+        --print-base64)
+            PRINT_B64=1
+            if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then PRINT_B64_PATH="$2"; shift 2; else shift; fi
             ;;
         -h|--help)      usage 0 ;;
         cpu|mem|disk|pveperf|net-server|net-client|vm-net|all)
@@ -184,6 +192,10 @@ serve_report() {
         log "   http://${ip}:${port}/${token}.md"
     done < <(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
     log " Ctrl-C cuando termines: detiene y borra la copia."
+    log ""
+    log " Si el navegador NO carga la URL, un firewall en medio bloquea el puerto."
+    log " Detén con Ctrl-C y usa el modo base64 (no necesita red):"
+    log "   bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --print-base64 '$file'"
     log "============================================================"
     trap 'rm -rf -- "'"$serve_dir"'"; log "Servidor detenido y copia borrada."; exit 0' INT TERM
     cd "$serve_dir" || return 1
@@ -212,6 +224,27 @@ ensure_pkg() {
 if [[ $CLEANUP -eq 1 ]]; then
     cleanup_traces "$CLEANUP_PATH"; exit 0
 fi
+
+# Modo --print-base64
+if [[ $PRINT_B64 -eq 1 ]]; then
+    f="$PRINT_B64_PATH"
+    if [[ -z "$f" ]]; then
+        f=$(ls -1t /root/proxmox-bench-*.md /tmp/proxmox-bench-*.md 2>/dev/null | head -1)
+    fi
+    if [[ -z "$f" || ! -f "$f" ]]; then
+        echo "ERROR: no encontré informe. Pasa la ruta como --print-base64 PATH" >&2
+        exit 1
+    fi
+    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en gzip+base64."
+    log "Selecciona TODA la línea de abajo. En tu equipo:"
+    log "    echo 'PEGA_AQUI' | base64 -d | gunzip > bench.md"
+    log "------------------ INICIO BASE64 ------------------"
+    gzip -c -- "$f" | base64 -w0
+    echo
+    log "------------------- FIN BASE64 --------------------"
+    exit 0
+fi
+
 
 # Si no hay tests pero hay --serve, sirve un informe ya existente.
 if [[ ${#TESTS[@]} -eq 0 && $SERVE -eq 1 ]]; then
@@ -517,7 +550,9 @@ log ""
 log "Para descargarlo:"
 log "  A) scp root@<NODO>:${OUTPUT} ./"
 log "  B) bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --serve 8765"
-log "  C) gzip -c '${OUTPUT}' | base64 -w0; echo   (copy/paste por la consola web)"
+log "  C) Copy/paste base64 (recomendado si --serve está bloqueado por firewall):"
+log "       bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --print-base64 '${OUTPUT}'"
+log "     En local: echo 'PEGA_AQUI' | base64 -d | gunzip > bench.md"
 log ""
 log "Limpieza posterior:"
 log "  bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --cleanup '${OUTPUT}'"

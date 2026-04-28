@@ -79,6 +79,10 @@ Resumen de las opciones de transferencia: copy-paste por la web shell con heredo
     --cleanup [PATH]  No audita: borra rastros (informe, script, history, viminfo).
                       Si se pasa PATH, borra ese informe concreto; en cualquier
                       caso busca y borra /root/proxmox-audit-*.md y /tmp/...
+    --print-base64 [PATH]  No audita: imprime el informe en una línea gzip+base64
+                      a stdout. Útil cuando --serve está bloqueado por firewall:
+                      copias la línea desde la web shell y la decodificas en local
+                      con `echo 'LINEA' | base64 -d | gunzip > audit.md`.
 -h, --help            Ayuda.
 ```
 

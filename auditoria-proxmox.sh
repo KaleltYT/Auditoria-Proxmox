@@ -19,6 +19,9 @@
 #                         para descargarlo desde el navegador. Ctrl-C lo detiene
 #       --cleanup [PATH]  No audita: borra rastros (informe, script copiado, history,
 #                         viminfo). Si pasas PATH, borra ese informe concreto
+#       --print-base64 [PATH]  No audita: imprime el informe en gzip+base64 a stdout
+#                         para copy/paste cuando --serve está bloqueado por firewall.
+#                         Si no pasas PATH, usa el último .md de /root
 #   -h, --help            Muestra esta ayuda
 
 set -u
@@ -44,6 +47,8 @@ SERVE_PORT=8765
 CHECK_PUBLIC=0
 CLEANUP=0
 CLEANUP_PATH=""
+PRINT_B64=0
+PRINT_B64_PATH=""
 
 # Ruta absoluta del script en ejecución (si está en disco). Nunca la borraremos.
 SELF_PATH=""
@@ -52,7 +57,7 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 fi
 
 usage() {
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -69,6 +74,10 @@ while [[ $# -gt 0 ]]; do
         --cleanup)
             CLEANUP=1
             if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CLEANUP_PATH="$2"; shift 2; else shift; fi
+            ;;
+        --print-base64)
+            PRINT_B64=1
+            if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then PRINT_B64_PATH="$2"; shift 2; else shift; fi
             ;;
         -h|--help)      usage 0 ;;
         *) echo "Opción desconocida: $1" >&2; usage 1 ;;
@@ -165,6 +174,10 @@ serve_report() {
     done < <(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
     log ""
     log " Ctrl-C cuando termines: detiene el servidor y borra la copia."
+    log ""
+    log " Si el navegador NO carga la URL, un firewall en medio bloquea el puerto."
+    log " Detén con Ctrl-C y usa el modo base64 (no necesita red):"
+    log "   bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --print-base64 '$file'"
     log "============================================================"
     log ""
 
@@ -185,6 +198,26 @@ serve_report() {
 # Modo --cleanup: ejecuta limpieza y sale.
 if [[ $CLEANUP -eq 1 ]]; then
     cleanup_traces "$CLEANUP_PATH"
+    exit 0
+fi
+
+# Modo --print-base64: imprime el informe en gzip+base64 a stdout y sale.
+if [[ $PRINT_B64 -eq 1 ]]; then
+    f="$PRINT_B64_PATH"
+    if [[ -z "$f" ]]; then
+        f=$(ls -1t /root/proxmox-audit-*.md /tmp/proxmox-audit-*.md 2>/dev/null | head -1)
+    fi
+    if [[ -z "$f" || ! -f "$f" ]]; then
+        echo "ERROR: no encontré ningún informe. Pasa la ruta como --print-base64 PATH" >&2
+        exit 1
+    fi
+    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en gzip+base64."
+    log "Selecciona TODA la línea de abajo y cópiala. En tu equipo local:"
+    log "    echo 'PEGA_AQUI' | base64 -d | gunzip > audit.md"
+    log "------------------ INICIO BASE64 ------------------"
+    gzip -c -- "$f" | base64 -w0
+    echo
+    log "------------------- FIN BASE64 --------------------"
     exit 0
 fi
 
@@ -836,9 +869,13 @@ log "      # o con wget si no hay curl:"
 log "      bash <(wget -qO- https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --serve 8765"
 log "    Abre la URL que imprime en tu navegador y descarga el .md."
 log ""
-log " C) Copy/paste por la consola web (informes pequeños):"
-log "      gzip -c '${OUTPUT}' | base64 -w0; echo"
-log "    Copia esa salida; en local: 'base64 -d archivo.b64 | gunzip > audit.md'"
+log " C) Copy/paste por la consola web (recomendado si --serve está bloqueado):"
+log "      bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/auditoria-proxmox.sh) --print-base64 '${OUTPUT}'"
+log "    Copia la línea base64 que imprime; en local:"
+log "      echo 'PEGA_AQUI' | base64 -d | gunzip > audit.md"
+log ""
+log "    (versión manual sin volver a descargar el script:"
+log "      gzip -c '${OUTPUT}' | base64 -w0 ; echo )"
 log ""
 log "============================================================"
 log " LIMPIEZA POST-AUDITORÍA (informe + script + history):"
