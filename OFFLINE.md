@@ -285,6 +285,63 @@ Es lo más habitual cuando conectas vía VPN o jump-host: tu cliente alcanza el 
 
 3. **Si es un firewall de red intermedio**, no hay arreglo desde el nodo — usa `--print-base64`.
 
+### Decodificar la base64 en tu equipo local
+
+#### Linux / macOS (bash, zsh)
+
+```bash
+# Versión gzipped (default de --print-base64):
+echo 'PEGA_AQUI_LA_LINEA' | base64 -d | gunzip > audit.md
+
+# Versión sin gzip (--print-base64 --plain):
+echo 'PEGA_AQUI_LA_LINEA' | base64 -d > audit.md
+```
+
+#### Windows — PowerShell (recomendado, no necesita instalar nada)
+
+Abre **PowerShell** (no `cmd.exe`). En Windows 10/11 es nativo: `Win + R` → `powershell` → Enter.
+
+**Versión gzipped** (default de `--print-base64`):
+
+```powershell
+# 1) Pega la línea entre las comillas:
+$b64 = 'PEGA_AQUI_LA_LINEA_BASE64'
+
+# 2) Decodifica + descomprime + guarda:
+$ms  = [IO.MemoryStream]::new([Convert]::FromBase64String($b64))
+$gz  = [IO.Compression.GzipStream]::new($ms, 'Decompress')
+$out = [IO.MemoryStream]::new()
+$gz.CopyTo($out)
+[IO.File]::WriteAllBytes("$PWD\audit.md", $out.ToArray())
+Write-Host "Guardado en $PWD\audit.md"
+```
+
+**Versión sin gzip** (lánzalo con `--print-base64 --plain`):
+
+```powershell
+$b64 = 'PEGA_AQUI'
+[IO.File]::WriteAllBytes("$PWD\audit.md", [Convert]::FromBase64String($b64))
+```
+
+#### Windows — `cmd.exe` con `certutil` (sólo versión `--plain`)
+
+`certutil` viene con Windows desde XP y decodifica base64 nativamente, pero **no** sabe gunzipear. Por eso necesitas la versión `--plain`:
+
+```cmd
+:: 1) Lanza el script con --plain en el nodo:
+::    bash <(curl -fsSL .../auditoria-proxmox.sh) --print-base64 --plain
+::
+:: 2) Pega la línea en notepad y guárdala como audit.b64
+::
+:: 3) En cmd:
+certutil -decode audit.b64 audit.md
+del audit.b64
+```
+
+#### Si tienes Git Bash, WSL o Cygwin en Windows
+
+Funcionan los comandos de **Linux/macOS** de arriba tal cual.
+
 Y al terminar, recuerda:
 
 ```bash

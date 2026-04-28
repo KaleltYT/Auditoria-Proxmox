@@ -22,6 +22,8 @@
 #       --print-base64 [PATH]  No audita: imprime el informe en gzip+base64 a stdout
 #                         para copy/paste cuando --serve está bloqueado por firewall.
 #                         Si no pasas PATH, usa el último .md de /root
+#       --plain           Combinado con --print-base64, omite el gzip (más fácil de
+#                         decodificar en Windows con certutil; salida más larga)
 #   -h, --help            Muestra esta ayuda
 
 set -u
@@ -49,6 +51,7 @@ CLEANUP=0
 CLEANUP_PATH=""
 PRINT_B64=0
 PRINT_B64_PATH=""
+PRINT_B64_PLAIN=0
 
 # Ruta absoluta del script en ejecución (si está en disco). Nunca la borraremos.
 SELF_PATH=""
@@ -57,7 +60,7 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 fi
 
 usage() {
-    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -79,6 +82,7 @@ while [[ $# -gt 0 ]]; do
             PRINT_B64=1
             if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then PRINT_B64_PATH="$2"; shift 2; else shift; fi
             ;;
+        --plain)        PRINT_B64_PLAIN=1; shift ;;
         -h|--help)      usage 0 ;;
         *) echo "Opción desconocida: $1" >&2; usage 1 ;;
     esac
@@ -201,7 +205,7 @@ if [[ $CLEANUP -eq 1 ]]; then
     exit 0
 fi
 
-# Modo --print-base64: imprime el informe en gzip+base64 a stdout y sale.
+# Modo --print-base64: imprime el informe codificado a stdout y sale.
 if [[ $PRINT_B64 -eq 1 ]]; then
     f="$PRINT_B64_PATH"
     if [[ -z "$f" ]]; then
@@ -211,11 +215,22 @@ if [[ $PRINT_B64 -eq 1 ]]; then
         echo "ERROR: no encontré ningún informe. Pasa la ruta como --print-base64 PATH" >&2
         exit 1
     fi
-    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en gzip+base64."
-    log "Selecciona TODA la línea de abajo y cópiala. En tu equipo local:"
-    log "    echo 'PEGA_AQUI' | base64 -d | gunzip > audit.md"
-    log "------------------ INICIO BASE64 ------------------"
-    gzip -c -- "$f" | base64 -w0
+    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en base64."
+    log "Selecciona TODA la línea de abajo y cópiala. Para decodificar en local:"
+    if [[ $PRINT_B64_PLAIN -eq 1 ]]; then
+        log "  Linux/macOS:  echo 'PEGA_AQUI' | base64 -d > audit.md"
+        log "  Windows cmd:  guarda en audit.b64 y:  certutil -decode audit.b64 audit.md"
+        log "  Windows PS:   [IO.File]::WriteAllBytes(\"audit.md\",[Convert]::FromBase64String('PEGA'))"
+        log "------------------ INICIO BASE64 ------------------"
+        base64 -w0 -- "$f"
+    else
+        log "  Linux/macOS:  echo 'PEGA_AQUI' | base64 -d | gunzip > audit.md"
+        log "  Windows PS:   ver OFFLINE.md (sección 'Decodificar base64 en Windows')"
+        log "  (¿en cmd.exe? relánzame con --print-base64 --plain para una salida sin gzip"
+        log "   que decodifica con: certutil -decode audit.b64 audit.md)"
+        log "------------------ INICIO BASE64 ------------------"
+        gzip -c -- "$f" | base64 -w0
+    fi
     echo
     log "------------------- FIN BASE64 --------------------"
     exit 0

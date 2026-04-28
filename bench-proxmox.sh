@@ -33,6 +33,8 @@
 #       --cleanup [PATH]  No mide: borra rastros (informe, history, tempfiles)
 #       --print-base64 [PATH]  No mide: imprime el informe en gzip+base64 a stdout
 #                         para copy/paste cuando --serve está bloqueado por firewall
+#       --plain           Combinado con --print-base64, omite el gzip (más fácil de
+#                         decodificar en Windows con certutil)
 #   -h, --help            Ayuda
 
 set -u
@@ -64,6 +66,7 @@ CLEANUP=0
 CLEANUP_PATH=""
 PRINT_B64=0
 PRINT_B64_PATH=""
+PRINT_B64_PLAIN=0
 
 TESTS=()
 
@@ -73,7 +76,7 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 fi
 
 usage() {
-    sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -101,6 +104,7 @@ while [[ $# -gt 0 ]]; do
             PRINT_B64=1
             if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then PRINT_B64_PATH="$2"; shift 2; else shift; fi
             ;;
+        --plain)        PRINT_B64_PLAIN=1; shift ;;
         -h|--help)      usage 0 ;;
         cpu|mem|disk|pveperf|net-server|net-client|vm-net|all)
             TESTS+=("$1"); shift ;;
@@ -235,11 +239,20 @@ if [[ $PRINT_B64 -eq 1 ]]; then
         echo "ERROR: no encontré informe. Pasa la ruta como --print-base64 PATH" >&2
         exit 1
     fi
-    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en gzip+base64."
-    log "Selecciona TODA la línea de abajo. En tu equipo:"
-    log "    echo 'PEGA_AQUI' | base64 -d | gunzip > bench.md"
-    log "------------------ INICIO BASE64 ------------------"
-    gzip -c -- "$f" | base64 -w0
+    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en base64."
+    log "Selecciona TODA la línea de abajo. Para decodificar en local:"
+    if [[ $PRINT_B64_PLAIN -eq 1 ]]; then
+        log "  Linux/macOS:  echo 'PEGA_AQUI' | base64 -d > bench.md"
+        log "  Windows cmd:  guarda en bench.b64 y:  certutil -decode bench.b64 bench.md"
+        log "------------------ INICIO BASE64 ------------------"
+        base64 -w0 -- "$f"
+    else
+        log "  Linux/macOS:  echo 'PEGA_AQUI' | base64 -d | gunzip > bench.md"
+        log "  Windows PS:   ver OFFLINE.md (sección 'Decodificar base64 en Windows')"
+        log "  (¿en cmd.exe? relánzame con --print-base64 --plain)"
+        log "------------------ INICIO BASE64 ------------------"
+        gzip -c -- "$f" | base64 -w0
+    fi
     echo
     log "------------------- FIN BASE64 --------------------"
     exit 0
