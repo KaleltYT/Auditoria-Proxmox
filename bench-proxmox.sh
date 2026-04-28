@@ -35,6 +35,8 @@
 #                         para copy/paste cuando --serve está bloqueado por firewall
 #       --plain           Combinado con --print-base64, omite el gzip (más fácil de
 #                         decodificar en Windows con certutil)
+#       --no-autoprint    No imprime automáticamente el bloque PowerShell de
+#                         descarga al terminar
 #   -h, --help            Ayuda
 
 set -u
@@ -67,6 +69,7 @@ CLEANUP_PATH=""
 PRINT_B64=0
 PRINT_B64_PATH=""
 PRINT_B64_PLAIN=0
+AUTOPRINT=1
 
 TESTS=()
 
@@ -76,7 +79,7 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 fi
 
 usage() {
-    sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -105,6 +108,7 @@ while [[ $# -gt 0 ]]; do
             if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then PRINT_B64_PATH="$2"; shift 2; else shift; fi
             ;;
         --plain)        PRINT_B64_PLAIN=1; shift ;;
+        --no-autoprint) AUTOPRINT=0; shift ;;
         -h|--help)      usage 0 ;;
         cpu|mem|disk|pveperf|net-server|net-client|vm-net|all)
             TESTS+=("$1"); shift ;;
@@ -209,6 +213,54 @@ serve_report() {
     fi
 }
 
+print_decode_block() {
+    local file="$1" mode="${2:-gzip}" base b64
+    base=$(basename -- "$file")
+    if [[ "$mode" == "plain" ]]; then
+        b64=$(base64 -w0 -- "$file")
+    else
+        b64=$(gzip -c -- "$file" | base64 -w0)
+    fi
+    local size_human
+    size_human=$(du -h -- "$file" | awk '{print $1}')
+    printf '\n'
+    printf '============================================================\n'
+    printf '  DESCARGA DEL INFORME (%s, %s)\n' "$base" "$size_human"
+    printf '  Copia y pega UN bloque entero en TU equipo local.\n'
+    printf '============================================================\n\n'
+    printf '########## OPCIÓN A — WINDOWS (PowerShell) ##########\n'
+    printf 'Abre PowerShell (Win+R, escribe powershell, Enter) y pega TODO esto:\n\n'
+    printf -- '----- COPIAR DESDE AQUÍ -----\n'
+    if [[ "$mode" == "plain" ]]; then
+        cat <<PS_EOF
+\$b64 = '${b64}'
+[IO.File]::WriteAllBytes("\$PWD\\${base}", [Convert]::FromBase64String(\$b64))
+Write-Host "Guardado: \$PWD\\${base}"
+PS_EOF
+    else
+        cat <<PS_EOF
+\$b64 = '${b64}'
+\$bytes = [Convert]::FromBase64String(\$b64)
+\$ms  = [System.IO.MemoryStream]::new(\$bytes)
+\$gz  = [System.IO.Compression.GzipStream]::new(\$ms, [System.IO.Compression.CompressionMode]::Decompress)
+\$out = [System.IO.MemoryStream]::new()
+\$gz.CopyTo(\$out)
+\$gz.Dispose(); \$ms.Dispose()
+[System.IO.File]::WriteAllBytes("\$PWD\\${base}", \$out.ToArray())
+Write-Host "Guardado: \$PWD\\${base} (\$(\$out.Length) bytes)"
+\$out.Dispose()
+PS_EOF
+    fi
+    printf -- '----- HASTA AQUÍ -----\n\n'
+    printf '########## OPCIÓN B — Linux / macOS / Git Bash / WSL ##########\n'
+    if [[ "$mode" == "plain" ]]; then
+        printf "echo '%s' | base64 -d > %s\n\n" "$b64" "$base"
+    else
+        printf "echo '%s' | base64 -d | gunzip > %s\n\n" "$b64" "$base"
+    fi
+    printf '############################################################\n'
+}
+
 ensure_pkg() {
     # ensure_pkg "fio" "fio"  -> command, paquete
     local cmd="$1" pkg="${2:-$1}"
@@ -239,22 +291,11 @@ if [[ $PRINT_B64 -eq 1 ]]; then
         echo "ERROR: no encontré informe. Pasa la ruta como --print-base64 PATH" >&2
         exit 1
     fi
-    log "Imprimiendo $f ($(du -h "$f" | awk '{print $1}')) en base64."
-    log "Selecciona TODA la línea de abajo. Para decodificar en local:"
     if [[ $PRINT_B64_PLAIN -eq 1 ]]; then
-        log "  Linux/macOS:  echo 'PEGA_AQUI' | base64 -d > bench.md"
-        log "  Windows cmd:  guarda en bench.b64 y:  certutil -decode bench.b64 bench.md"
-        log "------------------ INICIO BASE64 ------------------"
-        base64 -w0 -- "$f"
+        print_decode_block "$f" plain
     else
-        log "  Linux/macOS:  echo 'PEGA_AQUI' | base64 -d | gunzip > bench.md"
-        log "  Windows PS:   ver OFFLINE.md (sección 'Decodificar base64 en Windows')"
-        log "  (¿en cmd.exe? relánzame con --print-base64 --plain)"
-        log "------------------ INICIO BASE64 ------------------"
-        gzip -c -- "$f" | base64 -w0
+        print_decode_block "$f"
     fi
-    echo
-    log "------------------- FIN BASE64 --------------------"
     exit 0
 fi
 
@@ -559,15 +600,17 @@ w "_Generado por bench-proxmox.sh v${VERSION} en $(date -Iseconds)_"
 
 SIZE=$(du -h "$OUTPUT" 2>/dev/null | awk '{print $1}')
 log "Listo: $OUTPUT ($SIZE)"
+
+if [[ $AUTOPRINT -eq 1 && $SERVE -eq 0 ]]; then
+    print_decode_block "$OUTPUT"
+fi
+
 log ""
-log "Para descargarlo:"
-log "  A) scp root@<NODO>:${OUTPUT} ./"
-log "  B) bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --serve 8765"
-log "  C) Copy/paste base64 (recomendado si --serve está bloqueado por firewall):"
-log "       bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --print-base64 '${OUTPUT}'"
-log "     En local: echo 'PEGA_AQUI' | base64 -d | gunzip > bench.md"
+log "ALTERNATIVAS de descarga:"
+log "  - SCP:    scp root@<NODO>:${OUTPUT} ./"
+log "  - HTTP:   bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --serve 8765"
 log ""
-log "Limpieza posterior:"
+log "LIMPIEZA cuando termines:"
 log "  bash <(curl -fsSL https://raw.githubusercontent.com/KaleltYT/Auditoria-Proxmox/main/bench-proxmox.sh) --cleanup '${OUTPUT}'"
 
 if [[ $SERVE -eq 1 ]]; then
